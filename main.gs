@@ -4,65 +4,69 @@ function doPost(e) {
   let replyToken = eventData.replyToken;
   let receivedMessage = eventData.message.text;
 
+  if (eventData.source.type == "user") {
+    const webhookUrl = PropertiesService.getScriptProperties().getProperty("SlackWebhookURL");
+    const options =
+    {
+      "method": "post",
+      "contentType": "application/json",
+      "payload": JSON.stringify({
+        "username": getDisplayName(eventData.source.userId),
+        "text": receivedMessage
+      })
+    };
+    UrlFetchApp.fetch(webhookUrl, options);
+  }
   if (receivedMessage == "!ID") {
     reply([{
-        'type': 'text',
-        'text': eventData.source.type + "\n" + eventData.source.groupId + "\n" + eventData.source.userId,
-      }]);
+      'type': 'text',
+      'text': eventData.source.type + "\n" + eventData.source.groupId + "\n" + eventData.source.userId,
+    }]);
   }
   if (eventData.source.type == "user" && receivedMessage.startsWith("/")) {
     const sheets = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty("StudentListSpreadSheetID"));
     let studentID = receivedMessage.slice(1);
-    let mainSheet = sheets.getSheetByName("main");
-    if (mainSheet.getRange(2,1,mainSheet.getLastRow(),1).createTextFinder(studentID).findAll().length == 1) {
-      try{
-        let sheet = sheets.getSheetByName("LINE連携");
-        if (sheet.getRange(2,1,sheet.getLastRow(),1).createTextFinder(studentID).findAll().length == 0){
-          let startRow = sheet.getLastRow()+1;
-          let range = sheet.getRange(startRow, 1, 1, 2);
-          range.setValues([[String(studentID),eventData.source.userId]]);
-          reply([{
+    let mainSheet = sheets.getSheetByName("2024-M2");
+    // 学籍番号チェック
+    let lookUp = mainSheet.getRange(2, 1, mainSheet.getLastRow(), 1).createTextFinder(studentID).findAll();
+    switch (lookUp.length) {
+      case 0:
+        reply([{
+          'type': 'text',
+          'text': "学籍番号が正しくありません。確認の上、もう一度お試しください。"
+        }, {
+          'type': 'text',
+          'text': "学籍番号を5桁の半角数字で正しく入力してもこのメッセージが表示される場合は、クラス委員にお問い合わせください"
+        }]);
+        break
+      case 1:
+      let lineID = mainSheet.getRange(lookUp[0].getRow(), 5);
+        try {
+          if (lineID.getValue() == "") {
+            lineID.setValue(eventData.source.userId);
+            reply([{
               'type': 'text',
               'text': "登録が完了しました。",
             }]);
-        } else {
+          } else {
+            reply([{
+              'type': 'text',
+              'text': "既に登録されています。"
+            }, {
+              'type': 'text',
+              'text': "登録したことがないのにもかかわらず登録されたことになっている場合は、クラス委員にお問い合わせください"
+            }]);
+          }
+        } catch {
           reply([{
-            'type': 'text',
-            'text': "既に登録されています。"
-          },{
-              "type": "template",
-              "altText": "This is a buttons button to report issue",
-              "template": {
-                "type": "buttons",
-                "text": "登録したことがないのにも関わらず登録されたことになっている場合は、下のボタンを押してください。",
-              "actions": [{
-                "type": "message",
-                "label": "問題を報告",
-                "text": "!report"
-              }]
-              }
-          }]);
-        }
-      } catch{
-        reply([{
             'type': 'text',
             'text': "エラーが発生しました。もう一度お試しください。"
           }]);
-      }
-    } else {
-      reply([{
-          'type': 'text',
-          'text': "学籍番号が正しくありません。もう一度お試しください。"
-        }]);
+        }
+        break
     }
   }
-  if (receivedMessage == "!report"){
-    reply([{
-      'type': 'text',
-      'text': "報告を受け付けました。スタッフが追って連絡しますのでお待ちください。"
-    }]);
-  }
-  function reply(content){
+  function reply(content) {
     const options = {
       'headers': {
         'Content-Type': 'application/json',
@@ -79,7 +83,7 @@ function doPost(e) {
   return;
 }
 
-function getDisplayName(id){
+function getDisplayName(id) {
   const token = PropertiesService.getScriptProperties().getProperty("LINEToken");
   const options = {
     'headers': {
@@ -88,7 +92,7 @@ function getDisplayName(id){
     },
     'method': 'get'
   }
-  const url = "https://api.line.me/v2/bot/profile/"+id;
+  const url = "https://api.line.me/v2/bot/profile/" + id;
   let response = JSON.parse(UrlFetchApp.fetch(url, options).getContentText());
   return response.displayName;
 }
